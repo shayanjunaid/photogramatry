@@ -24,3 +24,5 @@ https://github.com/Dao-AILab/flash-attention/releases/download/v2.7.0.post2/flas
 kaolin==0.17.0
 spconv-cu118==2.3.6
 transformers==4.46.3
+https://huggingface.co/spaces/JeffreyXiang/TRELLIS/resolve/main/wheels/diff_gaussian_rasterization-0.0.0-cp310-cp310-linux_x86_64.whl?download=true
+https://huggingface.co/spaces/JeffreyXiang/TRELLIS/resolve/main/wheels/nvdiffrast-0.3.3-py3-none-any.whl?download=true
