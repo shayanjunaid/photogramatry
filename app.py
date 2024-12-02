@@ -1,9 +1,10 @@
 import gradio as gr
 import spaces
-# from gradio_litmodel3d import LitModel3D
+from gradio_litmodel3d import LitModel3D
 
 import os
 from typing import *
+import numpy as np
 import imageio
 import uuid
 from PIL import Image
@@ -37,11 +38,13 @@ def image_to_3d(image: Image.Image) -> Tuple[dict, str]:
         str: The path to the video of the 3D model.
     """
     outputs = pipeline(image, formats=["gaussian", "mesh"], preprocess_image=False)
-    video = render_utils.render_video(outputs['gaussian'][0])['color']
+    video = render_utils.render_video(outputs['gaussian'][0], num_frames=120)['color']
+    video_geo = render_utils.render_video(outputs['mesh'][0], num_frames=120)['normal']
+    video = [np.concatenate([video[i], video_geo[i]], axis=1) for i in range(len(video))]
     model_id = uuid.uuid4()
     video_path = f"/tmp/Trellis-demo/{model_id}.mp4"
     os.makedirs(os.path.dirname(video_path), exist_ok=True)
-    imageio.mimsave(video_path, video, fps=30)
+    imageio.mimsave(video_path, video, fps=15)
     model = {'gaussian': outputs['gaussian'][0], 'mesh': outputs['mesh'][0], 'model_id': model_id}
     return model, video_path
 
@@ -74,18 +77,25 @@ def deactivate_button() -> gr.Button:
 
 
 with gr.Blocks() as demo:
+    gr.Markdown("""
+    ## Image to 3D Asset with [TRELLIS](https://trellis3d.github.io/)
+    * Upload an image and click "Generate" to create a 3D asset. If the image has alpha channel, it be used as the mask. Otherwise, we use `rembg` to remove the background.
+    * If you find the generated 3D asset satisfactory, click "Extract GLB" to extract the GLB file and download it.
+    """)
+    
     with gr.Row():
         with gr.Column():
             image_prompt = gr.Image(label="Image Prompt", image_mode="RGBA", type="pil", height=300)
-            generate_btn = gr.Button("Generate", interactive=False)
+            generate_btn = gr.Button("Generate")
 
+            gr.Markdown("GLB Extraction Parameters:")
             mesh_simplify = gr.Slider(0.9, 0.98, label="Simplify", value=0.95, step=0.01)
             texture_size = gr.Slider(512, 2048, label="Texture Size", value=1024, step=512)
             extract_glb_btn = gr.Button("Extract GLB", interactive=False)
 
         with gr.Column():
             video_output = gr.Video(label="Generated 3D Asset", autoplay=True, loop=True, height=300)
-            model_output = gr.Model3D(label="Extracted GLB", height=300)
+            model_output = LitModel3D(label="Extracted GLB", exposure=20.0, height=300)
             download_glb = gr.DownloadButton(label="Download GLB", interactive=False)
 
     # Example images at the bottom of the page
@@ -96,8 +106,8 @@ with gr.Blocks() as demo:
                 for image in os.listdir("assets/example_image")
             ],
             inputs=[image_prompt],
-            fn=lambda image: (preprocess_image(image), gr.Button(interactive=True)),
-            outputs=[image_prompt, generate_btn],
+            fn=lambda image: preprocess_image(image),
+            outputs=[image_prompt],
             run_on_click=True,
             examples_per_page=64,
         )
@@ -109,14 +119,6 @@ with gr.Blocks() as demo:
         preprocess_image,
         inputs=[image_prompt],
         outputs=[image_prompt],
-    ).then(
-        activate_button,
-        outputs=[generate_btn],
-    )
-
-    image_prompt.clear(
-        deactivate_button,
-        outputs=[generate_btn],
     )
 
     generate_btn.click(
