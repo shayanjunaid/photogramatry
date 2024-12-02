@@ -102,8 +102,8 @@ class SLatMeshDecoder(SparseTransformerBase):
         )
         self.resolution = resolution
         self.rep_config = representation_config
-        mesh_extractor = SparseFeatures2Mesh('cpu', res=self.resolution*4, use_color=self.rep_config.get('use_color', False))
-        self.out_channels = mesh_extractor.feats_channels
+        self.mesh_extractor = SparseFeatures2Mesh(res=self.resolution*4, use_color=self.rep_config.get('use_color', False))
+        self.out_channels = self.mesh_extractor.feats_channels
         self.upsample = nn.ModuleList([
             SparseSubdivideBlock3d(
                 channels=model_channels,
@@ -153,9 +153,8 @@ class SLatMeshDecoder(SparseTransformerBase):
             list of representations
         """
         ret = []
-        mesh_extractor = SparseFeatures2Mesh(x.device, res=self.resolution*4, use_color=self.rep_config.get('use_color', False))
         for i in range(x.shape[0]):
-            mesh = mesh_extractor(x[i], training=self.training)
+            mesh = self.mesh_extractor(x[i], training=self.training)
             ret.append(mesh)
         return ret
 

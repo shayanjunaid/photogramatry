@@ -1,4 +1,5 @@
 import gradio as gr
+import spaces
 # from gradio_litmodel3d import LitModel3D
 
 import os
@@ -23,6 +24,7 @@ def preprocess_image(image: Image.Image) -> Image.Image:
     return pipeline.preprocess_image(image)
 
 
+@spaces.GPU
 def image_to_3d(image: Image.Image) -> Tuple[dict, str]:
     """
     Convert an image to a 3D model.
@@ -44,6 +46,7 @@ def image_to_3d(image: Image.Image) -> Tuple[dict, str]:
     return model, video_path
 
 
+@spaces.GPU
 def extract_glb(model: dict, mesh_simplify: float, texture_size: int) -> Tuple[str, str]:
     """
     Extract a GLB file from the 3D model.
