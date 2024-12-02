@@ -20,7 +20,7 @@ pymeshfix==0.17.0
 igraph==0.11.8
 git+https://github.com/EasternJournalist/utils3d.git@9a4eb15e4021b67b12c460c7057d642626897ec8
 xformers==0.0.27.post2+cu118
-flash-attn==2.7.0.post2
+flash-attn==2.6.3
 kaolin==0.17.0
 spconv-cu118==2.3.6
 transformers==4.46.3
