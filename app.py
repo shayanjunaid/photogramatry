@@ -39,8 +39,6 @@ def image_to_3d(image: Image.Image) -> Tuple[dict, str]:
     """
     outputs = pipeline(image, formats=["gaussian", "mesh"], preprocess_image=False)
     video = render_utils.render_video(outputs['gaussian'][0], num_frames=120)['color']
-    video_geo = render_utils.render_video(outputs['mesh'][0], num_frames=120)['normal']
-    video = [np.concatenate([video[i], video_geo[i]], axis=1) for i in range(len(video))]
     model_id = uuid.uuid4()
     video_path = f"/tmp/Trellis-demo/{model_id}.mp4"
     os.makedirs(os.path.dirname(video_path), exist_ok=True)
