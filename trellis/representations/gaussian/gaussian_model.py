@@ -15,6 +15,15 @@ class Gaussian:
             scaling_activation : str = "exp",
             device='cuda'
         ):
+        self.init_params = {
+            'aabb': aabb,
+            'sh_degree': sh_degree,
+            'mininum_kernel_size': mininum_kernel_size,
+            'scaling_bias': scaling_bias,
+            'opacity_bias': opacity_bias,
+            'scaling_activation': scaling_activation,
+        }
+        
         self.sh_degree = sh_degree
         self.active_sh_degree = sh_degree
         self.mininum_kernel_size = mininum_kernel_size 

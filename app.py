@@ -4,11 +4,14 @@ from gradio_litmodel3d import LitModel3D
 
 import os
 from typing import *
+import torch
 import numpy as np
 import imageio
 import uuid
+from easydict import EasyDict as edict
 from PIL import Image
 from trellis.pipelines import TrellisImageTo3DPipeline
+from trellis.representations import Gaussian, MeshExtractResult
 from trellis.utils import render_utils, postprocessing_utils
 
 
@@ -23,6 +26,47 @@ def preprocess_image(image: Image.Image) -> Image.Image:
         Image.Image: The preprocessed image.
     """
     return pipeline.preprocess_image(image)
+
+
+def pack_state(gs: Gaussian, mesh: MeshExtractResult, model_id: str) -> dict:
+    return {
+        'gaussian': {
+            **gs.init_params,
+            '_xyz': gs._xyz.cpu().numpy(),
+            '_features_dc': gs._features_dc.cpu().numpy(),
+            '_scaling': gs._scaling.cpu().numpy(),
+            '_rotation': gs._rotation.cpu().numpy(),
+            '_opacity': gs._opacity.cpu().numpy(),
+        },
+        'mesh': {
+            'vertices': mesh.vertices.cpu().numpy(),
+            'faces': mesh.faces.cpu().numpy(),
+        },
+        'model_id': model_id,
+    }
+    
+    
+def unpack_state(state: dict) -> Tuple[Gaussian, edict, str]:
+    gs = Gaussian(
+        aabb=state['gaussian']['aabb'],
+        sh_degree=state['gaussian']['sh_degree'],
+        mininum_kernel_size=state['gaussian']['mininum_kernel_size'],
+        scaling_bias=state['gaussian']['scaling_bias'],
+        opacity_bias=state['gaussian']['opacity_bias'],
+        scaling_activation=state['gaussian']['scaling_activation'],
+    )
+    gs._xyz = torch.tensor(state['gaussian']['_xyz'], device='cuda')
+    gs._features_dc = torch.tensor(state['gaussian']['_features_dc'], device='cuda')
+    gs._scaling = torch.tensor(state['gaussian']['_scaling'], device='cuda')
+    gs._rotation = torch.tensor(state['gaussian']['_rotation'], device='cuda')
+    gs._opacity = torch.tensor(state['gaussian']['_opacity'], device='cuda')
+    
+    mesh = edict(
+        vertices=torch.tensor(state['mesh']['vertices'], device='cuda'),
+        faces=torch.tensor(state['mesh']['faces'], device='cuda'),
+    )
+    
+    return gs, mesh, state['model_id']
 
 
 @spaces.GPU
@@ -43,25 +87,26 @@ def image_to_3d(image: Image.Image) -> Tuple[dict, str]:
     video_path = f"/tmp/Trellis-demo/{model_id}.mp4"
     os.makedirs(os.path.dirname(video_path), exist_ok=True)
     imageio.mimsave(video_path, video, fps=15)
-    model = {'gaussian': outputs['gaussian'][0], 'mesh': outputs['mesh'][0], 'model_id': model_id}
-    return model, video_path
+    state = pack_state(outputs['gaussian'][0], outputs['mesh'][0], model_id)
+    return state, video_path
 
 
 @spaces.GPU
-def extract_glb(model: dict, mesh_simplify: float, texture_size: int) -> Tuple[str, str]:
+def extract_glb(state: dict, mesh_simplify: float, texture_size: int) -> Tuple[str, str]:
     """
     Extract a GLB file from the 3D model.
 
     Args:
-        model (dict): The generated 3D model.
+        state (dict): The state of the generated 3D model.
         mesh_simplify (float): The mesh simplification factor.
         texture_size (int): The texture resolution.
 
     Returns:
         str: The path to the extracted GLB file.
     """
-    glb = postprocessing_utils.to_glb(model['gaussian'], model['mesh'], simplify=mesh_simplify, texture_size=texture_size)
-    glb_path = f"/tmp/Trellis-demo/{model['model_id']}.glb"
+    gs, mesh, model_id = unpack_state(state)
+    glb = postprocessing_utils.to_glb(gs, mesh, simplify=mesh_simplify, texture_size=texture_size)
+    glb_path = f"/tmp/Trellis-demo/{model_id}.glb"
     glb.export(glb_path)
     return glb_path, glb_path
 
