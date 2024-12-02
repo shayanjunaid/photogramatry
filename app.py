@@ -3,7 +3,6 @@ import spaces
 from gradio_litmodel3d import LitModel3D
 
 import os
-os.environ["ATTN_BACKEND"] = "xformers"
 from typing import *
 import torch
 import numpy as np
