@@ -2,16 +2,22 @@ import torch
 import torch.nn as nn
 from .. import SparseTensor
 from .. import DEBUG
+from . import SPCONV_ALGO
 
 class SparseConv3d(nn.Module):
     def __init__(self, in_channels, out_channels, kernel_size, stride=1, dilation=1, padding=None, bias=True, indice_key=None):
         super(SparseConv3d, self).__init__()
         if 'spconv' not in globals():
             import spconv.pytorch as spconv
+        algo = None
+        if SPCONV_ALGO == 'native':
+            algo = spconv.ConvAlgo.Native
+        elif SPCONV_ALGO == 'implicit_gemm':
+            algo = spconv.ConvAlgo.MaskImplicitGemm
         if stride == 1 and (padding is None):
-            self.conv = spconv.SubMConv3d(in_channels, out_channels, kernel_size, dilation=dilation, bias=bias, indice_key=indice_key)
+            self.conv = spconv.SubMConv3d(in_channels, out_channels, kernel_size, dilation=dilation, bias=bias, indice_key=indice_key, algo=algo)
         else:
-            self.conv = spconv.SparseConv3d(in_channels, out_channels, kernel_size, stride=stride, dilation=dilation, padding=padding, bias=bias, indice_key=indice_key)
+            self.conv = spconv.SparseConv3d(in_channels, out_channels, kernel_size, stride=stride, dilation=dilation, padding=padding, bias=bias, indice_key=indice_key, algo=algo)
         self.stride = tuple(stride) if isinstance(stride, (list, tuple)) else (stride, stride, stride)
         self.padding = padding
 

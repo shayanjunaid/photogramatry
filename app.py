@@ -3,6 +3,7 @@ import spaces
 from gradio_litmodel3d import LitModel3D
 
 import os
+os.environ['SPCONV_ALGO'] = 'native'
 from typing import *
 import torch
 import numpy as np
@@ -131,7 +132,7 @@ def extract_glb(state: dict, mesh_simplify: float, texture_size: int) -> Tuple[s
         str: The path to the extracted GLB file.
     """
     gs, mesh, model_id = unpack_state(state)
-    glb = postprocessing_utils.to_glb(gs, mesh, simplify=mesh_simplify, texture_size=texture_size)
+    glb = postprocessing_utils.to_glb(gs, mesh, simplify=mesh_simplify, texture_size=texture_size, verbose=False)
     glb_path = f"/tmp/Trellis-demo/{model_id}.glb"
     glb.export(glb_path)
     return glb_path, glb_path
@@ -161,12 +162,12 @@ with gr.Blocks() as demo:
                 randomize_seed = gr.Checkbox(label="Randomize Seed", value=True)
                 gr.Markdown("Stage 1: Sparse Structure Generation")
                 with gr.Row():
-                    ss_guidance_strength = gr.Slider(0.0, 10.0, label="Guidance Strength", value=5.0, step=0.1)
-                    ss_sampling_steps = gr.Slider(1, 50, label="Sampling Steps", value=25, step=1)
+                    ss_guidance_strength = gr.Slider(0.0, 10.0, label="Guidance Strength", value=7.5, step=0.1)
+                    ss_sampling_steps = gr.Slider(1, 50, label="Sampling Steps", value=12, step=1)
                 gr.Markdown("Stage 2: Structured Latent Generation")
                 with gr.Row():
-                    slat_guidance_strength = gr.Slider(0.0, 10.0, label="Guidance Strength", value=5.0, step=0.1)
-                    slat_sampling_steps = gr.Slider(1, 50, label="Sampling Steps", value=25, step=1)
+                    slat_guidance_strength = gr.Slider(0.0, 10.0, label="Guidance Strength", value=3.0, step=0.1)
+                    slat_sampling_steps = gr.Slider(1, 50, label="Sampling Steps", value=12, step=1)
 
             generate_btn = gr.Button("Generate")
             

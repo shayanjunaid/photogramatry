@@ -448,7 +448,7 @@ def to_glb(
         observations, masks, extrinsics, intrinsics,
         texture_size=texture_size, mode='opt',
         lambda_tv=0.01,
-        verbose=True
+        verbose=verbose
     )
     texture = Image.fromarray(texture)
 
