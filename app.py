@@ -15,6 +15,9 @@ from trellis.representations import Gaussian, MeshExtractResult
 from trellis.utils import render_utils, postprocessing_utils
 
 
+MAX_SEED = np.iinfo(np.int32).max
+
+
 def preprocess_image(image: Image.Image) -> Image.Image:
     """
     Preprocess the input image.
@@ -70,18 +73,39 @@ def unpack_state(state: dict) -> Tuple[Gaussian, edict, str]:
 
 
 @spaces.GPU
-def image_to_3d(image: Image.Image) -> Tuple[dict, str]:
+def image_to_3d(image: Image.Image, seed: int, randomize_seed: bool, ss_guidance_strength: float, ss_sampling_steps: int, slat_guidance_strength: float, slat_sampling_steps: int) -> Tuple[dict, str]:
     """
     Convert an image to a 3D model.
 
     Args:
         image (Image.Image): The input image.
+        seed (int): The random seed.
+        randomize_seed (bool): Whether to randomize the seed.
+        ss_guidance_strength (float): The guidance strength for sparse structure generation.
+        ss_sampling_steps (int): The number of sampling steps for sparse structure generation.
+        slat_guidance_strength (float): The guidance strength for structured latent generation.
+        slat_sampling_steps (int): The number of sampling steps for structured latent generation.
 
     Returns:
         dict: The information of the generated 3D model.
         str: The path to the video of the 3D model.
     """
-    outputs = pipeline(image, formats=["gaussian", "mesh"], preprocess_image=False)
+    if randomize_seed:
+        seed = np.random.randint(0, MAX_SEED)
+    torch.manual_seed(seed)
+    outputs = pipeline(
+        image,
+        formats=["gaussian", "mesh"],
+        preprocess_image=False,
+        sparse_structure_sampler_params={
+            "steps": ss_sampling_steps,
+            "cfg_strength": ss_guidance_strength,
+        },
+        slat_sampler_params={
+            "steps": slat_sampling_steps,
+            "cfg_strength": slat_guidance_strength,
+        },
+    )
     video = render_utils.render_video(outputs['gaussian'][0], num_frames=120)['color']
     video_geo = render_utils.render_video(outputs['mesh'][0], num_frames=120)['normal']
     video = [np.concatenate([video[i], video_geo[i]], axis=1) for i in range(len(video))]
@@ -131,11 +155,25 @@ with gr.Blocks() as demo:
     with gr.Row():
         with gr.Column():
             image_prompt = gr.Image(label="Image Prompt", image_mode="RGBA", type="pil", height=300)
-            generate_btn = gr.Button("Generate")
+            
+            with gr.Accordion(label="Generation Settings", open=False):
+                seed = gr.Slider(0, MAX_SEED, label="Seed", value=0, step=1)
+                randomize_seed = gr.Checkbox(label="Randomize Seed", value=True)
+                gr.Markdown("Stage 1: Sparse Structure Generation")
+                with gr.Row():
+                    ss_guidance_strength = gr.Slider(0.0, 10.0, label="Guidance Strength", value=5.0, step=0.1)
+                    ss_sampling_steps = gr.Slider(1, 50, label="Sampling Steps", value=25, step=1)
+                gr.Markdown("Stage 2: Structured Latent Generation")
+                with gr.Row():
+                    slat_guidance_strength = gr.Slider(0.0, 10.0, label="Guidance Strength", value=5.0, step=0.1)
+                    slat_sampling_steps = gr.Slider(1, 50, label="Sampling Steps", value=25, step=1)
 
-            gr.Markdown("GLB Extraction Parameters:")
-            mesh_simplify = gr.Slider(0.9, 0.98, label="Simplify", value=0.95, step=0.01)
-            texture_size = gr.Slider(512, 2048, label="Texture Size", value=1024, step=512)
+            generate_btn = gr.Button("Generate")
+            
+            with gr.Accordion(label="GLB Extraction Settings", open=False):
+                mesh_simplify = gr.Slider(0.9, 0.98, label="Simplify", value=0.95, step=0.01)
+                texture_size = gr.Slider(512, 2048, label="Texture Size", value=1024, step=512)
+            
             extract_glb_btn = gr.Button("Extract GLB", interactive=False)
 
         with gr.Column():
@@ -168,7 +206,7 @@ with gr.Blocks() as demo:
 
     generate_btn.click(
         image_to_3d,
-        inputs=[image_prompt],
+        inputs=[image_prompt, seed, randomize_seed, ss_guidance_strength, ss_sampling_steps, slat_guidance_strength, slat_sampling_steps],
         outputs=[model, video_output],
     ).then(
         activate_button,
