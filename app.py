@@ -17,9 +17,10 @@ from trellis.utils import render_utils, postprocessing_utils
 
 
 MAX_SEED = np.iinfo(np.int32).max
+TMP_DIR = "/tmp/Trellis-demo"
 
 
-def preprocess_image(image: Image.Image) -> Tuple[dict, Image.Image]:
+def preprocess_image(image: Image.Image) -> Tuple[str, Image.Image]:
     """
     Preprocess the input image.
 
@@ -27,14 +28,16 @@ def preprocess_image(image: Image.Image) -> Tuple[dict, Image.Image]:
         image (Image.Image): The input image.
 
     Returns:
-        np.array: The preprocessed image.
+        str: uuid of the trial.
         Image.Image: The preprocessed image.
     """
+    trial_id = str(uuid.uuid4())
     processed_image = pipeline.preprocess_image(image)
-    return {'image': np.array(processed_image)}, processed_image
+    processed_image.save(f"{TMP_DIR}/{trial_id}.png")
+    return trial_id, processed_image
 
 
-def pack_state(gs: Gaussian, mesh: MeshExtractResult, model_id: str) -> dict:
+def pack_state(gs: Gaussian, mesh: MeshExtractResult, trial_id: str) -> dict:
     return {
         'gaussian': {
             **gs.init_params,
@@ -48,7 +51,7 @@ def pack_state(gs: Gaussian, mesh: MeshExtractResult, model_id: str) -> dict:
             'vertices': mesh.vertices.cpu().numpy(),
             'faces': mesh.faces.cpu().numpy(),
         },
-        'model_id': model_id,
+        'trial_id': trial_id,
     }
     
     
@@ -72,16 +75,16 @@ def unpack_state(state: dict) -> Tuple[Gaussian, edict, str]:
         faces=torch.tensor(state['mesh']['faces'], device='cuda'),
     )
     
-    return gs, mesh, state['model_id']
+    return gs, mesh, state['trial_id']
 
 
 @spaces.GPU
-def image_to_3d(image: dict, seed: int, randomize_seed: bool, ss_guidance_strength: float, ss_sampling_steps: int, slat_guidance_strength: float, slat_sampling_steps: int) -> Tuple[dict, str]:
+def image_to_3d(trial_id: str, seed: int, randomize_seed: bool, ss_guidance_strength: float, ss_sampling_steps: int, slat_guidance_strength: float, slat_sampling_steps: int) -> Tuple[dict, str]:
     """
     Convert an image to a 3D model.
 
     Args:
-        image (dict): The input image.
+        trial_id (str): The uuid of the trial.
         seed (int): The random seed.
         randomize_seed (bool): Whether to randomize the seed.
         ss_guidance_strength (float): The guidance strength for sparse structure generation.
@@ -96,7 +99,7 @@ def image_to_3d(image: dict, seed: int, randomize_seed: bool, ss_guidance_streng
     if randomize_seed:
         seed = np.random.randint(0, MAX_SEED)
     outputs = pipeline.run(
-        Image.fromarray(image['image']),
+        Image.open(f"{TMP_DIR}/{trial_id}.png"),
         seed=seed,
         formats=["gaussian", "mesh"],
         preprocess_image=False,
@@ -112,11 +115,11 @@ def image_to_3d(image: dict, seed: int, randomize_seed: bool, ss_guidance_streng
     video = render_utils.render_video(outputs['gaussian'][0], num_frames=120)['color']
     video_geo = render_utils.render_video(outputs['mesh'][0], num_frames=120)['normal']
     video = [np.concatenate([video[i], video_geo[i]], axis=1) for i in range(len(video))]
-    model_id = uuid.uuid4()
-    video_path = f"/tmp/Trellis-demo/{model_id}.mp4"
+    trial_id = uuid.uuid4()
+    video_path = f"{TMP_DIR}/{trial_id}.mp4"
     os.makedirs(os.path.dirname(video_path), exist_ok=True)
     imageio.mimsave(video_path, video, fps=15)
-    state = pack_state(outputs['gaussian'][0], outputs['mesh'][0], model_id)
+    state = pack_state(outputs['gaussian'][0], outputs['mesh'][0], trial_id)
     return state, video_path
 
 
@@ -133,9 +136,9 @@ def extract_glb(state: dict, mesh_simplify: float, texture_size: int) -> Tuple[s
     Returns:
         str: The path to the extracted GLB file.
     """
-    gs, mesh, model_id = unpack_state(state)
+    gs, mesh, trial_id = unpack_state(state)
     glb = postprocessing_utils.to_glb(gs, mesh, simplify=mesh_simplify, texture_size=texture_size, verbose=False)
-    glb_path = f"/tmp/Trellis-demo/{model_id}.glb"
+    glb_path = f"{TMP_DIR}/{trial_id}.glb"
     glb.export(glb_path)
     return glb_path, glb_path
 
@@ -184,7 +187,7 @@ with gr.Blocks() as demo:
             model_output = LitModel3D(label="Extracted GLB", exposure=20.0, height=300)
             download_glb = gr.DownloadButton(label="Download GLB", interactive=False)
             
-    image_buf = gr.State()
+    trial_id = gr.Textbox(visible=False)
     output_buf = gr.State()
 
     # Example images at the bottom of the page
@@ -196,7 +199,7 @@ with gr.Blocks() as demo:
             ],
             inputs=[image_prompt],
             fn=preprocess_image,
-            outputs=[image_buf, image_prompt],
+            outputs=[trial_id, image_prompt],
             run_on_click=True,
             examples_per_page=64,
         )
@@ -205,12 +208,16 @@ with gr.Blocks() as demo:
     image_prompt.upload(
         preprocess_image,
         inputs=[image_prompt],
-        outputs=[image_buf, image_prompt],
+        outputs=[trial_id, image_prompt],
+    )
+    image_prompt.clear(
+        lambda: '',
+        outputs=[trial_id],
     )
 
     generate_btn.click(
         image_to_3d,
-        inputs=[image_buf, seed, randomize_seed, ss_guidance_strength, ss_sampling_steps, slat_guidance_strength, slat_sampling_steps],
+        inputs=[trial_id, seed, randomize_seed, ss_guidance_strength, ss_sampling_steps, slat_guidance_strength, slat_sampling_steps],
         outputs=[output_buf, video_output],
     ).then(
         activate_button,
