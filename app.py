@@ -19,7 +19,7 @@ from trellis.utils import render_utils, postprocessing_utils
 MAX_SEED = np.iinfo(np.int32).max
 
 
-def preprocess_image(image: Image.Image) -> Tuple[np.array, Image.Image]:
+def preprocess_image(image: Image.Image) -> Tuple[np.ndarray, Image.Image]:
     """
     Preprocess the input image.
 
@@ -184,8 +184,8 @@ with gr.Blocks() as demo:
             model_output = LitModel3D(label="Extracted GLB", exposure=20.0, height=300)
             download_glb = gr.DownloadButton(label="Download GLB", interactive=False)
             
-    image = gr.State()
-    model = gr.State()
+    image_buf = gr.State()
+    output_buf = gr.State()
 
     # Example images at the bottom of the page
     with gr.Row():
@@ -196,7 +196,7 @@ with gr.Blocks() as demo:
             ],
             inputs=[image_prompt],
             fn=lambda image: preprocess_image(image),
-            outputs=[image, image_prompt],
+            outputs=[image_buf, image_prompt],
             run_on_click=True,
             examples_per_page=64,
         )
@@ -205,13 +205,13 @@ with gr.Blocks() as demo:
     image_prompt.upload(
         preprocess_image,
         inputs=[image_prompt],
-        outputs=[image, image_prompt],
+        outputs=[image_buf, image_prompt],
     )
 
     generate_btn.click(
         image_to_3d,
-        inputs=[image, seed, randomize_seed, ss_guidance_strength, ss_sampling_steps, slat_guidance_strength, slat_sampling_steps],
-        outputs=[model, video_output],
+        inputs=[image_buf, seed, randomize_seed, ss_guidance_strength, ss_sampling_steps, slat_guidance_strength, slat_sampling_steps],
+        outputs=[output_buf, video_output],
     ).then(
         activate_button,
         outputs=[extract_glb_btn],
@@ -224,7 +224,7 @@ with gr.Blocks() as demo:
 
     extract_glb_btn.click(
         extract_glb,
-        inputs=[model, mesh_simplify, texture_size],
+        inputs=[output_buf, mesh_simplify, texture_size],
         outputs=[model_output, download_glb],
     ).then(
         activate_button,
