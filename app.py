@@ -19,6 +19,8 @@ from trellis.utils import render_utils, postprocessing_utils
 MAX_SEED = np.iinfo(np.int32).max
 TMP_DIR = "/tmp/Trellis-demo"
 
+os.makedirs(TMP_DIR, exist_ok=True)
+
 
 def preprocess_image(image: Image.Image) -> Tuple[str, Image.Image]:
     """
