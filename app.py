@@ -195,7 +195,7 @@ with gr.Blocks() as demo:
                 for image in os.listdir("assets/example_image")
             ],
             inputs=[image_prompt],
-            fn=lambda image: preprocess_image(image),
+            fn=preprocess_image,
             outputs=[image_buf, image_prompt],
             run_on_click=True,
             examples_per_page=64,
