@@ -19,7 +19,7 @@ from trellis.utils import render_utils, postprocessing_utils
 MAX_SEED = np.iinfo(np.int32).max
 
 
-def preprocess_image(image: Image.Image) -> Tuple[np.ndarray, Image.Image]:
+def preprocess_image(image: Image.Image) -> Tuple[dict, Image.Image]:
     """
     Preprocess the input image.
 
@@ -31,7 +31,7 @@ def preprocess_image(image: Image.Image) -> Tuple[np.ndarray, Image.Image]:
         Image.Image: The preprocessed image.
     """
     processed_image = pipeline.preprocess_image(image)
-    return np.array(processed_image), processed_image
+    return {'image': np.array(processed_image)}, processed_image
 
 
 def pack_state(gs: Gaussian, mesh: MeshExtractResult, model_id: str) -> dict:
@@ -76,12 +76,12 @@ def unpack_state(state: dict) -> Tuple[Gaussian, edict, str]:
 
 
 @spaces.GPU
-def image_to_3d(image: np.array, seed: int, randomize_seed: bool, ss_guidance_strength: float, ss_sampling_steps: int, slat_guidance_strength: float, slat_sampling_steps: int) -> Tuple[dict, str]:
+def image_to_3d(image: dict, seed: int, randomize_seed: bool, ss_guidance_strength: float, ss_sampling_steps: int, slat_guidance_strength: float, slat_sampling_steps: int) -> Tuple[dict, str]:
     """
     Convert an image to a 3D model.
 
     Args:
-        image (np.array): The input image.
+        image (dict): The input image.
         seed (int): The random seed.
         randomize_seed (bool): Whether to randomize the seed.
         ss_guidance_strength (float): The guidance strength for sparse structure generation.
@@ -96,7 +96,7 @@ def image_to_3d(image: np.array, seed: int, randomize_seed: bool, ss_guidance_st
     if randomize_seed:
         seed = np.random.randint(0, MAX_SEED)
     outputs = pipeline.run(
-        Image.fromarray(image),
+        Image.fromarray(image['image']),
         seed=seed,
         formats=["gaussian", "mesh"],
         preprocess_image=False,
