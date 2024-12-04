@@ -19,7 +19,7 @@ from trellis.utils import render_utils, postprocessing_utils
 MAX_SEED = np.iinfo(np.int32).max
 
 
-def preprocess_image(image: Image.Image) -> Image.Image:
+def preprocess_image(image: Image.Image) -> Tuple[np.array, Image.Image]:
     """
     Preprocess the input image.
 
@@ -27,9 +27,11 @@ def preprocess_image(image: Image.Image) -> Image.Image:
         image (Image.Image): The input image.
 
     Returns:
+        np.array: The preprocessed image.
         Image.Image: The preprocessed image.
     """
-    return pipeline.preprocess_image(image)
+    processed_image = pipeline.preprocess_image(image)
+    return np.array(processed_image), processed_image
 
 
 def pack_state(gs: Gaussian, mesh: MeshExtractResult, model_id: str) -> dict:
@@ -74,12 +76,12 @@ def unpack_state(state: dict) -> Tuple[Gaussian, edict, str]:
 
 
 @spaces.GPU
-def image_to_3d(image: Image.Image, seed: int, randomize_seed: bool, ss_guidance_strength: float, ss_sampling_steps: int, slat_guidance_strength: float, slat_sampling_steps: int) -> Tuple[dict, str]:
+def image_to_3d(image: np.array, seed: int, randomize_seed: bool, ss_guidance_strength: float, ss_sampling_steps: int, slat_guidance_strength: float, slat_sampling_steps: int) -> Tuple[dict, str]:
     """
     Convert an image to a 3D model.
 
     Args:
-        image (Image.Image): The input image.
+        image (np.array): The input image.
         seed (int): The random seed.
         randomize_seed (bool): Whether to randomize the seed.
         ss_guidance_strength (float): The guidance strength for sparse structure generation.
@@ -93,9 +95,9 @@ def image_to_3d(image: Image.Image, seed: int, randomize_seed: bool, ss_guidance
     """
     if randomize_seed:
         seed = np.random.randint(0, MAX_SEED)
-    torch.manual_seed(seed)
-    outputs = pipeline(
-        image,
+    outputs = pipeline.run(
+        Image.fromarray(image),
+        seed=seed,
         formats=["gaussian", "mesh"],
         preprocess_image=False,
         sparse_structure_sampler_params={
@@ -181,6 +183,9 @@ with gr.Blocks() as demo:
             video_output = gr.Video(label="Generated 3D Asset", autoplay=True, loop=True, height=300)
             model_output = LitModel3D(label="Extracted GLB", exposure=20.0, height=300)
             download_glb = gr.DownloadButton(label="Download GLB", interactive=False)
+            
+    image = gr.State()
+    model = gr.State()
 
     # Example images at the bottom of the page
     with gr.Row():
@@ -191,23 +196,21 @@ with gr.Blocks() as demo:
             ],
             inputs=[image_prompt],
             fn=lambda image: preprocess_image(image),
-            outputs=[image_prompt],
+            outputs=[image, image_prompt],
             run_on_click=True,
             examples_per_page=64,
         )
-
-    model = gr.State()
 
     # Handlers
     image_prompt.upload(
         preprocess_image,
         inputs=[image_prompt],
-        outputs=[image_prompt],
+        outputs=[image, image_prompt],
     )
 
     generate_btn.click(
         image_to_3d,
-        inputs=[image_prompt, seed, randomize_seed, ss_guidance_strength, ss_sampling_steps, slat_guidance_strength, slat_sampling_steps],
+        inputs=[image, seed, randomize_seed, ss_guidance_strength, ss_sampling_steps, slat_guidance_strength, slat_sampling_steps],
         outputs=[model, video_output],
     ).then(
         activate_button,

@@ -254,10 +254,11 @@ class TrellisImageTo3DPipeline(Pipeline):
         return slat
 
     @torch.no_grad()
-    def __call__(
+    def run(
         self,
         image: Image.Image,
         num_samples: int = 1,
+        seed: int = 42,
         sparse_structure_sampler_params: dict = {},
         slat_sampler_params: dict = {},
         formats: List[str] = ['mesh', 'gaussian', 'radiance_field'],
@@ -276,6 +277,7 @@ class TrellisImageTo3DPipeline(Pipeline):
         if preprocess_image:
             image = self.preprocess_image(image)
         cond = self.get_cond([image])
+        torch.manual_seed(seed)
         coords = self.sample_sparse_structure(cond, num_samples, sparse_structure_sampler_params)
         slat = self.sample_slat(cond, coords, slat_sampler_params)
         return self.decode_slat(slat, formats)
