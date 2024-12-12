@@ -246,6 +246,23 @@ with gr.Blocks() as demo:
     )
     
 
+# Cleans up the temporary directory every 10 minutes
+import threading
+import time
+
+def cleanup_tmp_dir():
+    while True:
+        if os.path.exists(TMP_DIR):
+            for file in os.listdir(TMP_DIR):
+                # remove files older than 10 minutes
+                if time.time() - os.path.getmtime(os.path.join(TMP_DIR, file)) > 600:
+                    os.remove(os.path.join(TMP_DIR, file))
+        time.sleep(600)
+                
+cleanup_thread = threading.Thread(target=cleanup_tmp_dir)
+cleanup_thread.start()
+    
+
 # Launch the Gradio app
 if __name__ == "__main__":
     pipeline = TrellisImageTo3DPipeline.from_pretrained("JeffreyXiang/TRELLIS-image-large")
