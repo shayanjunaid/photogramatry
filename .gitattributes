@@ -34,3 +34,5 @@ saved_model/**/* filter=lfs diff=lfs merge=lfs -text
 *.zst filter=lfs diff=lfs merge=lfs -text
 *tfevents* filter=lfs diff=lfs merge=lfs -text
 wheels/nvdiffrast-0.3.3-cp310-cp310-linux_x86_64.whl filter=lfs diff=lfs merge=lfs -text
+6D361327-DBEA-4BB3-881C-32A01D50270F.mov filter=lfs diff=lfs merge=lfs -text
+IMG_0015.jpeg filter=lfs diff=lfs merge=lfs -text
