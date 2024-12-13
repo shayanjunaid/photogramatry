@@ -3,6 +3,7 @@ import spaces
 from gradio_litmodel3d import LitModel3D
 
 import os
+import shutil
 os.environ['SPCONV_ALGO'] = 'native'
 from typing import *
 import torch
@@ -17,9 +18,20 @@ from trellis.utils import render_utils, postprocessing_utils
 
 
 MAX_SEED = np.iinfo(np.int32).max
-TMP_DIR = "/tmp/Trellis-demo"
-
+TMP_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'tmp')
 os.makedirs(TMP_DIR, exist_ok=True)
+
+
+def start_session(req: gr.Request):
+    user_dir = os.path.join(TMP_DIR, str(req.session_hash))
+    print(f'Creating user directory: {user_dir}')
+    os.makedirs(user_dir, exist_ok=True)
+    
+    
+def end_session(req: gr.Request):
+    user_dir = os.path.join(TMP_DIR, str(req.session_hash))
+    print(f'Removing user directory: {user_dir}')
+    shutil.rmtree(user_dir)
 
 
 def preprocess_image(image: Image.Image) -> Tuple[str, Image.Image]:
@@ -33,10 +45,8 @@ def preprocess_image(image: Image.Image) -> Tuple[str, Image.Image]:
         str: uuid of the trial.
         Image.Image: The preprocessed image.
     """
-    trial_id = str(uuid.uuid4())
     processed_image = pipeline.preprocess_image(image)
-    processed_image.save(f"{TMP_DIR}/{trial_id}.png")
-    return trial_id, processed_image
+    return processed_image
 
 
 def pack_state(gs: Gaussian, mesh: MeshExtractResult, trial_id: str) -> dict:
@@ -80,15 +90,29 @@ def unpack_state(state: dict) -> Tuple[Gaussian, edict, str]:
     return gs, mesh, state['trial_id']
 
 
+def get_seed(randomize_seed: bool, seed: int) -> int:
+    """
+    Get the random seed.
+    """
+    return np.random.randint(0, MAX_SEED) if randomize_seed else seed
+
+
 @spaces.GPU
-def image_to_3d(trial_id: str, seed: int, randomize_seed: bool, ss_guidance_strength: float, ss_sampling_steps: int, slat_guidance_strength: float, slat_sampling_steps: int) -> Tuple[dict, str]:
+def image_to_3d(
+    image: Image.Image,
+    seed: int,
+    ss_guidance_strength: float,
+    ss_sampling_steps: int,
+    slat_guidance_strength: float,
+    slat_sampling_steps: int,
+    req: gr.Request,
+) -> Tuple[dict, str]:
     """
     Convert an image to a 3D model.
 
     Args:
-        trial_id (str): The uuid of the trial.
+        image (Image.Image): The input image.
         seed (int): The random seed.
-        randomize_seed (bool): Whether to randomize the seed.
         ss_guidance_strength (float): The guidance strength for sparse structure generation.
         ss_sampling_steps (int): The number of sampling steps for sparse structure generation.
         slat_guidance_strength (float): The guidance strength for structured latent generation.
@@ -98,10 +122,9 @@ def image_to_3d(trial_id: str, seed: int, randomize_seed: bool, ss_guidance_stre
         dict: The information of the generated 3D model.
         str: The path to the video of the 3D model.
     """
-    if randomize_seed:
-        seed = np.random.randint(0, MAX_SEED)
+    user_dir = os.path.join(TMP_DIR, str(req.session_hash))
     outputs = pipeline.run(
-        Image.open(f"{TMP_DIR}/{trial_id}.png"),
+        image,
         seed=seed,
         formats=["gaussian", "mesh"],
         preprocess_image=False,
@@ -118,15 +141,20 @@ def image_to_3d(trial_id: str, seed: int, randomize_seed: bool, ss_guidance_stre
     video_geo = render_utils.render_video(outputs['mesh'][0], num_frames=120)['normal']
     video = [np.concatenate([video[i], video_geo[i]], axis=1) for i in range(len(video))]
     trial_id = uuid.uuid4()
-    video_path = f"{TMP_DIR}/{trial_id}.mp4"
-    os.makedirs(os.path.dirname(video_path), exist_ok=True)
+    video_path = os.path.join(user_dir, f"{trial_id}.mp4")
     imageio.mimsave(video_path, video, fps=15)
     state = pack_state(outputs['gaussian'][0], outputs['mesh'][0], trial_id)
+    torch.cuda.empty_cache()
     return state, video_path
 
 
 @spaces.GPU
-def extract_glb(state: dict, mesh_simplify: float, texture_size: int) -> Tuple[str, str]:
+def extract_glb(
+    state: dict,
+    mesh_simplify: float,
+    texture_size: int,
+    req: gr.Request,
+) -> Tuple[str, str]:
     """
     Extract a GLB file from the 3D model.
 
@@ -138,22 +166,16 @@ def extract_glb(state: dict, mesh_simplify: float, texture_size: int) -> Tuple[s
     Returns:
         str: The path to the extracted GLB file.
     """
+    user_dir = os.path.join(TMP_DIR, str(req.session_hash))
     gs, mesh, trial_id = unpack_state(state)
     glb = postprocessing_utils.to_glb(gs, mesh, simplify=mesh_simplify, texture_size=texture_size, verbose=False)
-    glb_path = f"{TMP_DIR}/{trial_id}.glb"
+    glb_path = os.path.join(user_dir, f"{trial_id}.glb")
     glb.export(glb_path)
+    torch.cuda.empty_cache()
     return glb_path, glb_path
 
 
-def activate_button() -> gr.Button:
-    return gr.Button(interactive=True)
-
-
-def deactivate_button() -> gr.Button:
-    return gr.Button(interactive=False)
-
-
-with gr.Blocks() as demo:
+with gr.Blocks(delete_cache=(600, 600)) as demo:
     gr.Markdown("""
     ## Image to 3D Asset with [TRELLIS](https://trellis3d.github.io/)
     * Upload an image and click "Generate" to create a 3D asset. If the image has alpha channel, it be used as the mask. Otherwise, we use `rembg` to remove the background.
@@ -162,7 +184,7 @@ with gr.Blocks() as demo:
     
     with gr.Row():
         with gr.Column():
-            image_prompt = gr.Image(label="Image Prompt", image_mode="RGBA", type="pil", height=300)
+            image_prompt = gr.Image(label="Image Prompt", format="png", image_mode="RGBA", type="pil", height=300)
             
             with gr.Accordion(label="Generation Settings", open=False):
                 seed = gr.Slider(0, MAX_SEED, label="Seed", value=0, step=1)
@@ -189,7 +211,6 @@ with gr.Blocks() as demo:
             model_output = LitModel3D(label="Extracted GLB", exposure=20.0, height=300)
             download_glb = gr.DownloadButton(label="Download GLB", interactive=False)
             
-    trial_id = gr.Textbox(visible=False)
     output_buf = gr.State()
 
     # Example images at the bottom of the page
@@ -201,33 +222,36 @@ with gr.Blocks() as demo:
             ],
             inputs=[image_prompt],
             fn=preprocess_image,
-            outputs=[trial_id, image_prompt],
+            outputs=[image_prompt],
             run_on_click=True,
             examples_per_page=64,
         )
 
     # Handlers
+    demo.load(start_session)
+    demo.unload(end_session)
+    
     image_prompt.upload(
         preprocess_image,
         inputs=[image_prompt],
-        outputs=[trial_id, image_prompt],
-    )
-    image_prompt.clear(
-        lambda: '',
-        outputs=[trial_id],
+        outputs=[image_prompt],
     )
 
     generate_btn.click(
+        get_seed,
+        inputs=[randomize_seed, seed],
+        outputs=[seed],
+    ).then(
         image_to_3d,
-        inputs=[trial_id, seed, randomize_seed, ss_guidance_strength, ss_sampling_steps, slat_guidance_strength, slat_sampling_steps],
+        inputs=[image_prompt, seed, ss_guidance_strength, ss_sampling_steps, slat_guidance_strength, slat_sampling_steps],
         outputs=[output_buf, video_output],
     ).then(
-        activate_button,
+        lambda: gr.Button(interactive=True),
         outputs=[extract_glb_btn],
     )
 
     video_output.clear(
-        deactivate_button,
+        lambda: gr.Button(interactive=False),
         outputs=[extract_glb_btn],
     )
 
@@ -236,31 +260,14 @@ with gr.Blocks() as demo:
         inputs=[output_buf, mesh_simplify, texture_size],
         outputs=[model_output, download_glb],
     ).then(
-        activate_button,
+        lambda: gr.Button(interactive=True),
         outputs=[download_glb],
     )
 
     model_output.clear(
-        deactivate_button,
+        lambda: gr.Button(interactive=False),
         outputs=[download_glb],
     )
-    
-
-# Cleans up the temporary directory every 10 minutes
-import threading
-import time
-
-def cleanup_tmp_dir():
-    while True:
-        if os.path.exists(TMP_DIR):
-            for file in os.listdir(TMP_DIR):
-                # remove files older than 10 minutes
-                if time.time() - os.path.getmtime(os.path.join(TMP_DIR, file)) > 600:
-                    os.remove(os.path.join(TMP_DIR, file))
-        time.sleep(600)
-                
-cleanup_thread = threading.Thread(target=cleanup_tmp_dir)
-cleanup_thread.start()
     
 
 # Launch the Gradio app
