@@ -9,10 +9,7 @@ import torch
 from ...modules.sparse import SparseTensor
 from easydict import EasyDict as edict
 from .utils_cube import *
-try:
-    from .flexicube import FlexiCubes
-except:
-    print("Please install kaolin and diso to use the mesh extractor.")
+from .flexicube import FlexiCubes
 
 
 class MeshExtractResult:

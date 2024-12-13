@@ -6,11 +6,7 @@
 # distribution of this software and related documentation without an express
 # license agreement from NVIDIA CORPORATION & AFFILIATES is strictly prohibited.
 import torch
-try:
-    import kaolin as kal
-    import nvdiffrast.torch as dr
-except :
-    print("Kaolin and nvdiffrast are not installed. Please install them to use the mesh renderer.")
+import nvdiffrast.torch as dr
 from easydict import EasyDict as edict
 from ..representations.mesh import MeshExtractResult
 import torch.nn.functional as F
