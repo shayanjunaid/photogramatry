@@ -294,7 +294,7 @@ with gr.Blocks(delete_cache=(600, 600)) as demo:
             
             with gr.Accordion(label="GLB Extraction Settings", open=False):
                 mesh_simplify = gr.Slider(0.9, 0.98, label="Simplify", value=0.95, step=0.01)
-                texture_size = gr.Slider(512, 2048, label="Texture Size", value=1024, step=512)
+                texture_size = gr.Slider(512, 4069, label="Texture Size", value=1024, step=512)
             
             with gr.Row():
                 extract_glb_btn = gr.Button("Extract GLB", interactive=False)
